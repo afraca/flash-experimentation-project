@@ -1,0 +1,17 @@
+.vscode/
+__pycache__
+asic/
+avmplus/
+AvmshellTests/
+players/
+RABCDAsm/
+
+*.zip
+*.pdf
+*.html
+*.swf
+notes.txt
+
+SourceProjects/NameResolution/*
+!SourceProjects/NameResolution/src/
+SourceProjects/TestLocalMethodTable/
