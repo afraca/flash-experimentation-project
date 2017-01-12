@@ -44,6 +44,9 @@ def include_row(row, seed, target):
     if 'target' not in row_config:
         # This is a non-optimized run result
         return row_config['seed'] == seed
+    # By careful observation, we have some other outliers
+    if row[6] == 27145:
+        return False
     # Optimized run result
     return row_config['seed'] == seed and row_config['target'] == target
 
@@ -52,7 +55,7 @@ def raw_results(seed, target):
     """ _ """
     results = {}
     with CONNECTION:
-        for row in CURSOR.execute('SELECT compiler, version, standalone, optimized, elapsed, config FROM log'):
+        for row in CURSOR.execute('SELECT compiler, version, standalone, optimized, elapsed, config, id FROM log'):
             if not include_row(row, seed, target):
                 continue
             key = (row[0], row[1], row[2], row[3])
@@ -165,7 +168,7 @@ def plot_all_targets(seed, all_results):
         avg, std, n = sub_stats_from_stats(non_optimized_stats)
         tmp_results.append(('Default', avg, std))
         # For debug message declared here
-        filename = 'reorder_comp{}_version{}'.format(compiler, short_version)
+        filename = 'reorder_seed{}_comp{}_version{}'.format(seed, compiler, short_version)
         try:
             # No big differences makes sorting useless
             if False:

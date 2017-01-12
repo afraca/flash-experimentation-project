@@ -65,15 +65,15 @@
 \section{Introduction}
 \label{sec:introduction}
 
-This research was conducted as part of an experimentation project at Utrecht University\footnote{For completeness sake, conducted as part of INFOMEPCS1 for partial completion of the Computer Science master degree.}. In 2011, Middelkoop \textit{et. al.} \cite{Middelkoop2011} performed a study on instrumentation of ActionScript (AS) programs through the means of bytecode manipulation. As part of this project the authors gained some rudimentary knowledge on how method dispatch should work in the ActionScript Virtual Machine (AVM). In an informal setting it has been hinted that method dispatch can be a great candidate for optimization of Flash programs. This is further confirmed by a notice in the very bottom of the specification document for the AVM \cite{Adobe2007}, which briefly states how sometimes \texttt{callproperty}, \texttt{callproplex} and \texttt{callpropvoid} can be replaced by \texttt{callmethod} and \texttt{callstatic}, which skip an intermediate lookup step for the property name. A more thorough explanation will be presented later in this report.
+This research was conducted as part of an experimentation project at Utrecht University\footnote{For completeness sake, conducted as part of INFOMEPCS1 for partial completion of the Computer Science master degree.}. In 2011, Middelkoop \textit{et. al.} \cite{Middelkoop2011} performed a study on instrumentation of ActionScript (AS) programs through the means of bytecode manipulation. As part of this project the authors gained some rudimentary knowledge on how method dispatch should work in the ActionScript Virtual Machine (AVM). In an informal setting it has been hinted that method dispatch can be a great candidate for optimization of Flash programs. This is further confirmed by a notice at the very bottom of the specification document for the AVM \cite{Adobe2007}, which briefly states how sometimes \texttt{callproperty}, \texttt{callproplex} and \texttt{callpropvoid} can be replaced by \texttt{callmethod} and \texttt{callstatic}, which skip an intermediate lookup step for the property name. A more thorough explanation will be presented later in this report.
 
-This experimentation project was setup to explore what is possible with this kind of optimizations. It should give an estimation of how hard is to achieve, possibly in an automated way, and how much impact these optimizations have. At section \ref{sec:ecosystem} we will look into the Flash ecosystem to see how the development cycle is typically done and how the ActionScript language, the ActionScript Virtual Machine and the Adobe Flash Player relate to each other. Section \ref{sec:methodology} shows how we setup and execute the different experiments, with the results and basic analysis in section \ref{sec:results}. We conclude in section \ref{sec:discussion} with what the implications are of the results.
+This experimentation project was setup to explore what is possible with this kind of optimizations. It should give an estimation of how hard it is to achieve, possibly in an automated way, and how much impact these optimizations have. At section \ref{sec:ecosystem} we will look into the Flash ecosystem to see how the development cycle is typically done and how the ActionScript language, the ActionScript Virtual Machine and the Adobe Flash Player relate to each other. Section \ref{sec:methodology} shows how we setup and execute the different experiments, with the results and basic analysis in section \ref{sec:results}. We conclude in section \ref{sec:discussion} with what the implications are of the results.
 
 Why are we conducting this research? The Flash ecosystem provides a way of developing ``high-impact, rich Web content'' \cite{AdobeSystems}, but is also used in a standalone setting. Despite being highly critized for the numerous security vulnerabilities \cite{Van-Acker2012, Symantec2016}, and major platforms and browsers moving away (due the large attack surface \cite{LaForge2016, Seitz2009}), it is still widely employed in millions of devices \cite{AdobeSystemsa}.
 
 \section{Flash ecosystem}
 \label{sec:ecosystem}
-The \textit{Adobe Flash Player} is the main\footnote{Alternatives exists, some copying the purpose of the Adobe Flash player, others have a different purpose.  On Linux, Gnu Gnash is popular. The Unity Web player has some support for interop for it, and Lightspark is an actively developed player and browser plugin. } runtime for \texttt{.swf} files. In short, it is a container format for ActionScript Bytecode, and optionally multimedia files. The main component is an implementation for the \textit{ActionScript Virtual Machine (AVM)}. The Flash player is mainly used as a browser plugin, though standalone variants also exist\footnote{This has been superseded by the \textit{Adobe Air} runtime system, where a slim runtime is distributed with every application.}. As plugin, it is limited by a number of security precautions, like interactions with the local filesystem and performing network requests to other domains. For interaction with the embedding web page there is some basic functionality (like calling defined javascript functions).
+The \textit{Adobe Flash Player} is the main\footnote{Alternatives exists, some copying the purpose of the Adobe Flash player, others have a different purpose.  On Linux, Gnu Gnash is popular. The Unity Web player has some support for interop for it, and Lightspark is an actively developed player and browser plugin. } runtime for \texttt{.swf} files. In short, it is a container format for ActionScript Bytecode, and optionally multimedia files. The main component is an implementation for the \textit{ActionScript Virtual Machine (AVM)}. The Flash player is mainly used as a browser plugin, though standalone variants also exist\footnote{This has been superseded by the \textit{Adobe Air} runtime system, where a slim runtime is distributed with every application.}. As a plugin, it is limited by a number of security precautions, like interactions with the local filesystem and performing network requests to other domains. For interaction with the embedding web page there is some basic functionality (like calling defined javascript functions).
 
 The \texttt{.swf} files are generated by a variety of products. Some focus on animation (Adobe Animate, Adobe LiveMotion, Adobe Illustrator)\footnote{Also: ToonBoom, Apple Keynote, and dozens others.}, some on the scripting side (Adobe Flash Builder, FlashDevelop, Haxe)\footnote{Also: SWFTools, Ming library, CrossBridge and dozens others.}. Scripting is generally achieved by ActionScript. For the execution of the ActionScript code, Adobe constructed a Virtual Machine specification. The second generation of this specification, the AVM2, is the one we will focus on. This was designed to work with ActionScript 3.0.
 
@@ -116,11 +116,11 @@ package
 \label{lst:basic}
 \end{listing}
 
-This shows a very basic program: no overrides, no class hiërarchy and a single method\footnote{There is a distinction between `method' and `function',  which follows the usual convention. Methods are functions defined as part of a class definition, or when dynamically attached to a class instance.} Decompilation will give us for the call instruction (line 16): \\
+This shows a very basic program: no overrides, no class hiërarchy and a single method\footnote{There is a distinction between `method' and `function',  which follows the usual convention. Methods are functions defined as part of a class definition, or when dynamically attached to a class instance.}. Decompilation will give us for the call instruction (line 16): \\
 \texttt{callpropvoid Qname(PackageNamespace(""),"f") 0} \\
 The description of \texttt{callpropvoid} describes how the \textit{multiname} (namespacing not of importance here) is an index into the multiname constant pool, and continues: ``The property specified by the multiname ... is resolved on the object'' \cite{Adobe2007}. Property means a specific trait kind here. Traits are a specific AVM2 concept, and can represent for example\footnote{Also class initializers (not the same as instance initializers), functions and `slots' (similar to constants).} getters, setters, constants and methods. Upon instance construction, each instance gets a traits table. Each method trait has an integer \texttt{disp\_id} (of which next to nothing is known) and an \texttt{index }that points into the \texttt{method} array of the \texttt{abcFile}.
 
-The \texttt{.swf} container permits embedding multiple \texttt{abcFile} structures. The AVM2 specification has more information on this construct. For all our purposes, we limit ourselves to a single \texttt{afcFile}. This will have no problematic consequences, as the runtime operates as far as we are concerned on a single structure. \\
+The \texttt{.swf} container permits embedding multiple \texttt{abcFile} structures. The AVM2 specification has more information on this construct. For our purposes, we limit ourselves to a single \texttt{abcFile}. This will have no problematic consequences, as the runtime operates as far as we are concerned on a single structure. \\
 The \texttt{method} array mentioned holds the actual method execution information\footnote{Technically the method signatures and method bodies are split up, because of native methods which have no body.}. It is a global array.
 
 There is another method invocation opcode: \texttt{callmethod}. This receives as first argument an integer named \texttt{index}, described as ``the index of the method to invoke on receiver''. Receiver should be an object on the stack at a depth dependent on the argument count. A later fragment in the opcode description shows: ``The method at position \textit{index} on the object \textit{receiver} is invoked with ....''. Preliminary research showed this index is also referred to (in error messages for example) as \texttt{disp\_id}. The AVM2 specification has an interesting section on optimizing method dispatch by using \texttt{callmethod} instead of \texttt{callproperty} (or similar opcodes). It refers to a non-existent \texttt{trait\_method} structure on the \texttt{abcFile}, and additionally to a ``method table''. (This ``method table'' is said to have non-zero offsets.) The experiments will clear up some of this confusion. The main purpose of the compiler hint subsection was to state that it is possible to provide some index to \texttt{callmethod} to avoid a name lookup.
@@ -133,14 +133,14 @@ The goal is to test how much performance we can gain by changing \texttt{callpro
 
 So far we considered the runtime to be a completely black box. Adobe however hosts a project on GitHub called \textit{avmplus}. The documentation is sparse, development is done in private and the workings are quite difficult to comprehend due to its size\footnote{\textit{sloccount} shows 491.929 lines of code in total}. Also, its place in the current Flash player/plugin is not specified. We can however see why our \texttt{callmethod} will probably always fail: \textit{core/verifier.cpp} line 1838 has the error hardcoded in. A comment explains the reason: problems will arise when the class \texttt{Object} has methods.
 
-To still come to answers for our project, we use 2 approaches. We can infer some behaviour about method dispatch and lookup times for names by building a case with a large number of classes and methods, test it and then change how many times we call a certain method. Any kind of non-constant lookup will show. We will refer to this experiment as the ``reorder experiment'',  and work this out in section \ref{sec:methodology-reorder}. \\
+To still come to answers for our project, we use 2 approaches. We can infer some behaviour about method dispatch and lookup times for names by building an example with a large number of classes and methods, test it and then change how many times we call a certain method. Any kind of non-constant lookup will show. We will refer to this experiment as the ``reorder experiment'',  and work this out in section \ref{sec:methodology-reorder}. \\
 We also changed and compiled \textit{avmplus} to silence the error in the hopes of still having a well executing program. This is discussed in \ref{sec:methodology-callmethod}. 
 
 \subsection{Common operations, common testcase}
 \label{sec:methodology-common}
-Both experiments require a useful testcase. The testcase should represent the situation which would benefit the most from optimizations. Despite earlier mentioning of the \textit{avmplus} code, we still have to approach the runtime as a black box. Considering the structures involved in method dispatch, we choose our testcase to have a large number of classes with a large number of methods, and will have the method bodies to be extremely trivial. We also generate a number of subclasses, as the AVM2 specification hints briefly (section 4.8.5) it might affect dispatch, where only the even methods are overridden. Listing \ref{lst:classes} shows how the outline of such classes would look. For the calling code, we want a high amount of calls to all methods. The calling code length should not exceed impractical limits though\footnote{For debug, edit is permitted to be slow, but doable within an hour.}, so loops address that. (Listing \ref{lst:naive} shows the naive way.) Some JIT-mechanism\footnote{Just In Time optimizations for hot paths} might optimize with repeated calling. We use loops, then break up the loops in \textit{n} \textit{sub}-loops, then randomize the order of them all. This is demonstrated in listing \ref{lst:blocks} (in reality the loop limits would exceed 1 of course).
+Both experiments require a useful testcase. The testcase should represent the situation which would benefit the most from optimizations. Despite earlier mentioning of the \textit{avmplus} code, we still have to approach the runtime as a black box. Considering the structures involved in method dispatch, we choose our testcase to have a large number of classes with a large number of methods, and will have the method bodies to be extremely trivial. We also generate a number of subclasses, as the AVM2 specification hints briefly (section 4.8.5) it might affect dispatch, where only the even methods are overridden. Listing \ref{lst:classes} shows how the outline of such classes would look. For the calling code, we want a high number of calls to all methods. The calling code length should not exceed impractical limits though\footnote{For debug, edit is permitted to be slow, but doable within an hour.}, so loops address that. (Listing \ref{lst:naive} shows the naive way.) Some JIT-mechanism\footnote{Just In Time optimizations for hot paths} might optimize with repeated calling. We use loops, then break up the loops in \textit{n} \textit{sub}-loops, then randomize the order of them all. This is demonstrated in listing \ref{lst:blocks} (in reality the loop limits would exceed 1 of course).
 
-We wrote a set of common files that aid in generating these AS classes, methods and calling code. This code works by having some basic templates where some missing information gets substituted in.
+We wrote a set of common Python scripts that aid in generating these AS classes, methods and calling code. This code works by having some basic templates where some missing information gets substituted in.
 
 \begin{minted}
 [
@@ -259,14 +259,14 @@ for i in 1..1:
 
 \subsection{Reorder experiment}
 \label{sec:methodology-reorder}
-In this particular experiment a key assumption is we have no way of using \texttt{callmethod} to skip the name lookup, but the lookup itself might be prone to optimizations. In a linear search strategy it would be possible to reorder the lookup table to have the most commonly used methods in front. Determining what these most commonly used methods is out of scope for this research.
+In this particular experiment a key assumption is that we have no way of using \texttt{callmethod} to skip the name lookup, but the lookup itself might be prone to optimizations. In a linear search strategy it would be possible to reorder the lookup table to have the most commonly used methods in front. Determining what these most commonly used methods is out of scope for this research.
 
 Our testcase will have $p$ classes, each of which has $q$ subclasses. Every class has  $n$ methods. Additionally, in the calling code, we split the loops in $r$ blocks, and $s$ is the amount of total calls for a class, such that in the equally distributed case every method is called $ s / n $ times, and the upper loop limit for each block is $ (s / n) / r $. 
 
 When `optimizing' we set the new limits on all blocks such that the one \textit{target} method of each class is called $ 0.9 * s$, and every other method is called $ 0.1 * s / (n-1) $. The hypothetical linear search strategy would be impacted by this. (While this is done on the bytecode level in the implementation it could coincidentally also have been achieved on the source level for this particular case.)
 
-The test pipeline is architectured to automatically run a series of steps on all source projects it can find (in a given start directory). It will compile the project with $n$ different compilers\footnote{Options are:  Adobe Flex Compiler (mxmlc) 3.2.0 build 3958, Apache Flex Compiler (mxmlc) 4.9.1 build 1447119, 
-Apache Flex Compiler (mxmlc) 4.15.0 build 20160104 and Adobe ActionScript Compiler (mxmlc) Version 2.0.0 build 354194}. Compilers theoretically could execute optimizations themselves in the production of bytecode, and different generations and variants are therefore included. It will check whether a routine for optimization is included in the script for the project and apply it, otherwise an identity transformation (copy) is performed. The runtime can behave differently in significant ways. The pipeline therefore executes the $2n$ \texttt{.swf} files in a range of different runtimes which encompass the standalone player and the plugin on different operating systems\footnote{On Windows the following: flashplayer\_23\_sa, flashplayer9r280\_win\_sa and plugin version (24,0,0,186) in FireFox 50.1.0.}.  For results not to be  influenced by other factors, the pipeline is carefully constructed to be fully automatic while isolating runs and detecting failures.
+The test pipeline is architectured to automatically run a series of steps on all source projects it can find (in a given start directory). It will compile the project with $m$ different compilers\footnote{Options are:  Adobe Flex Compiler (mxmlc) 3.2.0 build 3958, Apache Flex Compiler (mxmlc) 4.9.1 build 1447119, 
+Apache Flex Compiler (mxmlc) 4.15.0 build 20160104 and Adobe ActionScript Compiler (mxmlc) Version 2.0.0 build 354194}. Compilers theoretically could execute optimizations themselves in the production of bytecode, and different generations and variants are therefore included. It will check whether a routine for optimization is included in the script for the project and apply it, otherwise an identity transformation (copy) is performed. The runtime can behave differently in significant ways. The pipeline therefore executes the $2m$ \texttt{.swf} files in a range of different runtimes which encompass the standalone player and the plugin on different operating systems\footnote{On Windows the following: flashplayer\_23\_sa, flashplayer9r280\_win\_sa and plugin version (24,0,0,186) in Firefox 50.1.0.}.  For results not to be  influenced by other factors, the pipeline is carefully constructed to be fully automatic while isolating runs and detecting failures.
 
 The main code is included in listing \ref{lst:reorder-run-main}. The source for all code, including preliminary assertions, templates and helpers can be found in appendix \ref{sec:resources}.
 
@@ -283,13 +283,13 @@ lastline=327
 {python}{\scriptPath/run_reorder_exp.py}
 \captionof{listing}{run\_reorder\_exp.py: main function \label{lst:reorder-run-main}}
 
-All the projects are supplied with some ActionScript wrapping code to do the profiling. When executing, this wrapping code will execute the testcase a fixed amount of iterations. Each iteration is timed, and the results are indirectly written to a log file, accompanied by the environment it was executed in. Because of security restrictions, the results are sent through a simple http server which logs to a database. For tests on other platforms the script will additionally store all created executables online.
+All the projects are supplied with some ActionScript wrapping code to do the profiling. When executing, this wrapping code will execute the testcase a fixed number of iterations. Each iteration is timed, and the results are indirectly written to a log file, accompanied by the environment it was executed in. Because of security restrictions, the results are sent through a simple http server which logs to a database. For tests on other platforms the script will additionally store all created executables online.
 
 \subsection{Callmethod experiment}
 \label{sec:methodology-callmethod}
-As has been discussed, there is a possibility to utilize the \textit{avmplus} code in an experiment. This can be manually compiled under certain conditions. This process is described in appendix \ref{sec:buildavmplus}. This experiment follows the original approach for optimizing method dispatch. A testcase would be compiled, some mechanism would alter the bytecode to replace call opcodes to use \texttt{callmethod}. The compilation of \textit{avmplus} results in a binary named \textit{avmshell}. Making this binary execute code compiled with the \textit{mxml} compilers is not practical\footnote{It will error on a lack of builtin types, which the normal player has included by itself, but for \textit{avmshell} needs to be included explicitly. This uses the file \textit{builtins.abc}.}. The experiment is split into two stages. Stage 1 generates a testcase identical to the "reorder experiment", with the exception that all code is in a single file, mostly for convenience\footnote{When invoking \textit{avmshell} one would otherwise have to include all files separately, which for a small amount is annoying, and for a large amount is impossible because of shell limitations.}. 
+As has been discussed, there is a possibility to utilize the \textit{avmplus} code in an experiment. This can be manually compiled under certain conditions. This process is described in appendix \ref{sec:buildavmplus}. This experiment follows the original approach for optimizing method dispatch. A testcase would be compiled, some mechanism would alter the bytecode to replace call opcodes to use \texttt{callmethod}. The compilation of \textit{avmplus} results in a binary named \textit{avmshell}. Making this binary execute code compiled with the \textit{mxml} compilers is not practical\footnote{It will error on a lack of builtin types, which the normal player has included by itself, but for \textit{avmshell} needs to be included explicitly. This uses the file \textit{builtins.abc}.}. The experiment is split into two stages. Stage 1 generates a testcase identical to the "reorder experiment", with the difference that all code is in a single file, mostly for convenience\footnote{When invoking \textit{avmshell} one would otherwise have to include all files separately, which for a small amount is annoying, and for a large amount is impossible because of shell limitations.}. 
 
-Stage 2 will compile the testcase using \texttt{ASC (asc.jar)} with optimizations enabled and disabled. The bytecode is copied, and all lines matching ``\texttt{callproperty ... work(i)}'' are replaced with ``\texttt{callmethod i 0}''. Both versions get executed a fixed amount of iterations, and for each iteration resource usage (cpu time and memory usage) gets logged. We also test the effects of the runtime flag which forces JIT. The \texttt{main} function of stage 2 is included in listing \ref{lst:callmethod-run2-main}.
+Stage 2 will compile the testcase using \texttt{ASC (asc.jar)} with optimizations enabled and disabled. The bytecode is copied, and all lines matching ``\texttt{callproperty ... work(i)}'' are replaced with ``\texttt{callmethod i 0}''. Both versions get executed a fixed number of iterations, and for each iteration resource usage (cpu time and memory usage) gets logged. We also test the effects of the runtime flag which forces JIT. The \texttt{main} function of stage 2 is included in listing \ref{lst:callmethod-run2-main}.
 
 \inputminted[
 frame=leftline,
@@ -373,8 +373,8 @@ A number of combinations for the compiled files and runtimes is incompatible, an
 
 \begin{figure}[h!]
 \centering
-\includegraphics[scale=1.1]{D:/Studie/Master/ExperimentationProject/Results/reorder_comp0_version0.eps}
-\caption{Runtimes per target, compiler=0, version=0}
+\includegraphics[scale=0.8]{D:/Studie/Master/ExperimentationProject/Results/reorder_seed74088_comp0_version0.eps}
+\caption{Runtimes per target, seed=$42^3$, compiler=0, version=0}
 \label{fig:reorder-plot}
 \end{figure}
 
@@ -420,11 +420,9 @@ seed & compile\_flags & run\_flags & optimized & avg\_utime & std\_utime & avg\_
 \label{tbl:callmethod-results}
 \end{table}
 
-We first see the runtime is notably affected by the different compilation and runtime configurations. The variation in performance is minimal, with standard deviation never exceeding 10\% of the mean, where the runs with JIT forced vary the most, these are also the slowest by a great margin. The optimized version was slower in 6 out of 8 cases, where the differences range from $-1.4$\% to $0.1$\% (with one outlier of $6.2$\%). Although upon glance it seems there is no difference, a Wilcoxon Rank Sum Test was performed\footnote{A z-value of $-0.10502$ was found. To confirm the Wilcoxon test, a Two-Sample t-Test was performed. The test agreed.} indicating no significant difference between optimized and non-optimized was found.
+We first see the runtime is notably affected by the different compilation and runtime configurations. The variation in performance is minimal, with standard deviation never exceeding 10\% of the mean, where the runs with JIT forced vary the most, these are also the slowest by a great margin. The optimized version was slower in 6 out of 8 cases, where the differences range from $-1.4$\% to $0.1$\% (with one outlier of $6.2$\%). At first glance it seems there is no difference, which was confirmed by performing a Wilcoxon Rank Sum Test\footnote{A z-value of $-0.10502$ was found. To confirm the Wilcoxon test, a Two-Sample t-Test was performed. The test agreed.} indicating no significant difference between optimized and non-optimized was found.
 
 Some testing was done to incorporate the idea of the reorder experiment in this experiment. When all \texttt{callmethod} instructions call to a single method (so 100\% of calls to a target method), the runtime is identical to what was shown in table \ref{tbl:callmethod-results}.
-
-\newpage
 
 \section{Conclusion \& Discussion}
 \label{sec:discussion}
@@ -465,6 +463,7 @@ Instructions for Linux. Use Python 2 for this (2.7.12 was tested as working). (N
 \item \begin{verbatim} python ../configure.py \end{verbatim}
 \item Install \texttt{default-jre} 
 \item Download redtamarin sdk, navigate to it's lib directory, place that \texttt{asc.jar} in \textit{avmplus/utils} (Do not use \texttt{asc2.jar})
+item \begin{verbatim} python core/builtin.py -config CONFIG:VMCFG_FLOAT=false \end{verbatim}
 \item Remove from \textit{avmplus/bin-release/Makefile} the \texttt{-Werror} and add \texttt{-Wno-narrowing -fpermissive} to c++ options
 \item Execute \texttt{make}
 \end{itemize}
@@ -501,25 +500,30 @@ More reorder experiment plots for other configurations:
 
 \begin{figure}[h!]
 \centering
-\includegraphics[scale=0.8]{D:/Studie/Master/ExperimentationProject/Results/reorder_comp0_version1.eps}
-\caption{Runtimes per target, compiler=0, version=1}
+\begin{minipage}[b]{0.4\textwidth}
+	\includegraphics[scale=0.55]{D:/Studie/Master/ExperimentationProject/Results/reorder_seed74088_comp0_version1.eps}
+	\caption{Runtimes per target, seed=$42^3$, compiler=0, version=1}
+\end{minipage}
+\hfill
+\begin{minipage}[b]{0.4\textwidth}
+	\includegraphics[scale=0.55]{D:/Studie/Master/ExperimentationProject/Results/reorder_seed74088_comp3_version1.eps}
+	\caption{Runtimes per target, seed=$42^3$, compiler=3, version=1}	
+\end{minipage}
 \end{figure}
+
+
 
 \begin{figure}[h!]
 \centering
-\includegraphics[scale=0.8]{D:/Studie/Master/ExperimentationProject/Results/reorder_comp3_version1.eps}
-\caption{Runtimes per target, compiler=3, version=1}
-\end{figure}
-
-\begin{figure}[h!]
-\centering
-\includegraphics[scale=0.8]{D:/Studie/Master/ExperimentationProject/Results/reorder_comp3_version2.eps}
-\caption{Runtimes per target, compiler=3, version=2}
-\end{figure}
-
-\begin{figure}[h!]
-\centering
-\caption{ -corrupt- Runtimes per target, compiler=3, version=3}
+\begin{minipage}[b]{0.4\textwidth}
+\includegraphics[scale=0.55]{D:/Studie/Master/ExperimentationProject/Results/reorder_seed74088_comp3_version2.eps}
+\caption{Runtimes per target, seed=$42^3$, compiler=3, version=2}
+\end{minipage}
+\hfill
+\begin{minipage}[b]{0.4\textwidth}
+\includegraphics[scale=0.55]{D:/Studie/Master/ExperimentationProject/Results/reorder_seed74088_comp3_version3.eps}
+\caption{Runtimes per target, seed=$42^3$, compiler=3, version=3}
+\end{minipage}
 \end{figure}
 
 \end{document}
